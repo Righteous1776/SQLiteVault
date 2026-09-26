@@ -154,7 +154,7 @@ private struct ColumnRow: View {
         HStack(spacing: 12) {
             Image(systemName: column.primaryKeyPosition > 0 ? "key.fill" : "textformat")
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(column.primaryKeyPosition > 0 ? .orange : .tint)
+                .foregroundStyle(column.primaryKeyPosition > 0 ? Color.orange : Color.accentColor)
                 .frame(width: 30)
 
             VStack(alignment: .leading, spacing: 3) {
