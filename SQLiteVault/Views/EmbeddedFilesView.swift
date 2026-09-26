@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import QuickLook
 
 struct DatabaseEmbeddedFilesView: View {
     let database: DatabaseAsset
