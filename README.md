@@ -1,74 +1,72 @@
 # SQLite Vault
 
-**Current cumulative baseline: V0.2.1**
+SQLite Vault is an iOS/iPadOS 26 native control plane for personal SQLite assets. It keeps source databases independent, groups them into logical Workspaces, provides bounded cross-database search, read-only SQL, and discovers embedded binary documents for selective preview/export.
 
-SQLite Vault is an iOS/iPadOS 26-first personal SQLite control plane. It centralizes many independent SQLite databases without destroying their original boundaries.
+## Current release
 
-## V0.2.1 — Control Plane + Binary Assets
+**V0.3.6 / Build 10 — A9 Database Health Lattice**
 
-- iCloud Drive vault with local Application Support fallback.
-- Import `.sqlite`, `.sqlite3`, and `.db` files through the system file importer.
-- Native SQLite schema inspection using `sqlite_schema` and `PRAGMA`.
-- Stable database identity based on Vault file names instead of refresh-time UUIDs.
-- Persistent iCloud metadata catalog (`.SQLiteVault/catalog-v2.json`).
-- Workspaces: logical multi-database groups with categories and tags.
-- Workspace SQL: attach selected databases read-only as `db1`, `db2`, … and run cross-database `SELECT`, `JOIN`, and `UNION` queries.
-- Database organization: category, tags, and favorite state without modifying source schemas.
-- Global Search across the entire Vault or one Workspace: database names, schema definitions, and bounded row-content matches.
-- Read-only single-database SQL Console backed by `sqlite3_stmt_readonly`.
-- Apple-style UI: restrained Neumorphism for data surfaces, iOS 26 Liquid Glass for floating controls, SF Symbols Replace transitions for Morphicons-like state changes.
-- iPhone + iPad navigation based on SwiftUI `NavigationSplitView`.
-- Deployment target: **iOS/iPadOS 26.0**. No iOS 15 compatibility layer.
+This release restores the database-native A9 lattice as a first-class health arbitration layer while preserving the existing iCloud, optimized-storage, Recovery, Workspace, read-only SQL, and tactile UI systems. A9 is implemented as a pure-Swift advisory sidecar with zero source-database mutation authority.
 
-## Safety model
+- Scroll-safe cards: content cards no longer install a zero-distance drag gesture, so vertical ScrollView/List scrolling starts normally from a card.
+- Stable toolbar: the trailing toolbar is reduced to fixed-size `+`, `globe`, and refresh controls so language text cannot collide with adjacent actions.
+- Reliable import: SwiftUI `fileImporter` is replaced with `UIDocumentPickerViewController(forOpeningContentTypes:asCopy:)`, with a delegate callback and explicit error path.
+- Refresh state machine: `idle -> refreshing -> success -> idle`; no competing Boolean-driven symbol replacement.
+- Runtime localization: Simplified Chinese, English, and Japanese resources are bundled.
+- Tactile language dial: a full-screen frosted overlay with a circular three-detent language control, magnetic resistance, spring snapping, short rigid gear-tooth haptics, and stronger detent feedback.
+- Liquid Glass is reserved for high-level navigation/controls. Content surfaces retain restrained neumorphic depth for readability.
 
-Source databases remain independent files. Workspace composition uses read-only SQLite `ATTACH` aliases and never rewrites the original databases. Global Search only runs read-only statements. User-visible SQL consoles reject write statements.
 
-The control metadata catalog is separate from source SQLite files, so categories/tags/workspaces do not contaminate a novel database, app database, or any other project schema.
 
-Future write support must use local working copies, validation, snapshotting, and coordinated iCloud commit.
+### Optimized Storage
 
-## Search behavior
+- `Optimize Device Storage` keeps iCloud as the master copy and treats downloaded ubiquitous SQLite files as a reclaimable local cache.
+- Simple Vault refresh no longer forces every remote database to download. Remote-only databases remain visible and can be downloaded on demand.
+- `Keep All Downloaded` requests every database for offline use; `Manual` disables automatic download/eviction decisions.
+- Per-file `Always Keep Downloaded` pins protect selected databases from eviction. Favorites and the database currently open are also protected.
+- `Optimize Now` removes only safe local copies. A file must be fully uploaded, downloaded, conflict-free, idle, and unpinned before `evictUbiquitousItem(at:)` is allowed. The iCloud master copy is never deleted by optimization.
+- Automatic optimization is conservative: it only runs in optimized mode under device-storage pressure and targets files that have not been used recently.
+- Device storage metrics expose local SQLite cache size, reclaimable bytes, free device space, cloud-only count and pinned count.
 
-V0.2 performs federated live search rather than building a destructive central copy. A search:
+### Real iCloud control layer
 
-1. scopes to the whole Vault or one Workspace,
-2. matches database names and schema definitions,
-3. searches up to 80 table/view objects per database,
-4. checks up to 24 columns per object,
-5. returns at most 8 row matches per object and 200 hits overall.
+- Dedicated iCloud page in the sidebar with live connection state instead of silent fallback.
+- Checks `ubiquityIdentityToken` and the exact `iCloud.com.zeostudio.SQLiteVault` container.
+- Reads per-file ubiquitous metadata for local availability, download/upload activity and unresolved conflicts.
+- `Sync Now` requests outstanding cloud downloads; iCloud Drive continues to manage upload transport for files written into the app container.
+- Local fallback SQLite files are surfaced explicitly and can be migrated into iCloud Drive.
+- The app now distinguishes signed-out, container-unavailable, connected and error states.
+- Entitlements declare `CloudDocuments`, the iCloud container, and the ubiquity container.
 
-This keeps the first control-plane implementation bounded. A persistent local FTS cache can be added later without changing source databases.
+
+## A9 Database Health Lattice (V0.3.6)
+
+SQLite Vault now embeds the database-native A9 arbitration core as a pure-Swift advisory sidecar. A9 maps observed SQLite/cloud health signals into an exact 144-state lattice: GREEN/YELLOW/RED × P0–P3 × L0–L5 × transient/persistent-or-blocker. Fast scans stay lightweight; Deep scans add `PRAGMA integrity_check` and `PRAGMA foreign_key_check`. RED is latched and cannot be silently cleared by the chip. A9 has zero authority to mutate, repair, merge, freeze or cut over source databases.
+
+## Data safety
+
+SQLite Vault treats imported databases as copied Vault assets. Interactive SQL remains query-only and passes both the explicit SQL allow-list and SQLite read-only statement checks. Workspace SQL uses read-only ATTACH aliases and does not physically merge source files.
+
+## Embedded files
+
+BLOB scanning is metadata-first. Full binary contents are materialized only for a selected Preview/Export action. The current scanner recognizes common PDF, Office/OpenXML, image, archive, and generic binary signatures and tries nearby filename/name/path/title metadata.
 
 ## Build
 
-The repository uses XcodeGen so the Xcode project is deterministic.
+The project is generated with XcodeGen.
 
 ```bash
-brew install xcodegen
 xcodegen generate
-xcodebuild -project SQLiteVault.xcodeproj -scheme SQLiteVault -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project SQLiteVault.xcodeproj -scheme SQLiteVault -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
-The GitHub Actions workflow targets `macos-26` and Xcode 26.6.
-
-## iCloud setup before real-device use
-
-1. Open the generated project in Xcode.
-2. Select your Apple Developer team.
-3. Enable iCloud Documents for `iCloud.com.zeostudio.SQLiteVault`, or change the bundle/container identifiers in `project.yml`, `Info.plist`, `SQLiteVault.entitlements`, and `ICloudVault.swift`.
-4. Build to an iOS/iPadOS 26 device signed into iCloud Drive.
-
-See `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`, and `WORK_HANDOFF.md`.
+GitHub Actions targets macOS 26 + Xcode 26.6 and also produces an unsigned device IPA artifact.
 
 
-## SQL safety
+## Storage Intelligence & Recovery (V0.3.4)
+SQLite Vault now treats downloaded iCloud databases as a managed local cache. A selectable cache budget and LRU policy work alongside device free-space pressure. Manual optimization always provides a preview before eviction. Cloud-only databases pass a download + SQLite validation state machine before inspection. Temporary extracted documents are tracked separately and can be cleared without touching database masters. Local Recovery stores restore points before destructive deletion and can capture unresolved iCloud conflict versions.
 
-Interactive SQL accepts query-shaped statements only (`SELECT`, `WITH`, `EXPLAIN`). SQLite's own `sqlite3_stmt_readonly()` remains a second gate. Workspace database attachment is performed only by the app with read-only file URIs; user SQL cannot issue `ATTACH` / `DETACH`.
 
-## iOS 26.0.1 + Binary Assets
-
-- Deployment target remains iOS/iPadOS 26.0, which covers devices running 26.0.1 and later 26.x patch releases.
-- Liquid Glass is native SwiftUI: `GlassEffectContainer`, `.glassEffect`, `.buttonStyle(.glass)` and `.glassProminent` are used for floating controls while high-density data stays on restrained solid/neumorphic surfaces.
-- **Binary Assets** scans SQLite BLOB metadata without eagerly loading every document. It recognizes filename/path/title hints and common signatures for PDF, DOCX/DOC, XLSX, PPTX, RTF, images, ZIP and generic binary data.
-- Full BLOB extraction happens only after the user chooses **Preview** or **Export**. Preview uses SwiftUI Quick Look; Export uses the system share sheet so the file can be opened in Files or another compatible app.
+## A9 lifecycle preflight (V0.3.6)
+A9 now follows database lifecycle transitions rather than operating only as a scan screen. Import, open, Recovery, conflict capture, local eviction, optimization and deletion produce persistent preflight evidence. SQLite Vault also computes a canonical SHA-256 fingerprint from `sqlite_schema` + `user_version`; unexpected drift becomes advisory evidence until a clean Deep scan confirms the new schema baseline. Recovery snapshots record the A9 state and schema fingerprint present when the snapshot was created. A9 remains advisory-only and cannot write, repair, merge, freeze, or cut over a source SQLite database.
