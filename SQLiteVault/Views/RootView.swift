@@ -15,11 +15,15 @@ private enum SidebarDestination: Hashable {
 
 struct RootView: View {
     @Environment(VaultStore.self) private var store
+    @Environment(VaultPreferences.self) private var preferences
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selection: SidebarDestination? = .console
     @State private var showingImporter = false
     @State private var showingWorkspaceEditor = false
     @State private var refreshPulse = false
+    @State private var showingLanguageDrawer = false
+    @Namespace private var languageMorph
+    @Namespace private var sharedNavigation
 
     var body: some View {
         NavigationSplitView {
@@ -90,6 +94,7 @@ struct RootView: View {
             .toolbar {
                 ToolbarItemGroup {
                     Button {
+                        VaultHaptics.press()
                         showingWorkspaceEditor = true
                     } label: {
                         Label("New Workspace", systemImage: "square.stack.3d.up.badge.plus")
@@ -97,6 +102,18 @@ struct RootView: View {
                     .buttonStyle(.glass)
 
                     Button {
+                        VaultHaptics.selection()
+                        withAnimation(reduceMotion ? .linear(duration: 0.12) : .spring(response: 0.42, dampingFraction: 0.72)) {
+                            showingLanguageDrawer = true
+                        }
+                    } label: {
+                        Label(preferences.language.nativeName, systemImage: "globe")
+                    }
+                    .buttonStyle(.glass)
+                    .matchedGeometryEffect(id: "language-surface", in: languageMorph)
+
+                    Button {
+                        VaultHaptics.press()
                         showingImporter = true
                     } label: {
                         Label("Import", systemImage: "plus")
@@ -105,6 +122,7 @@ struct RootView: View {
 
                     Button {
                         guard !store.isBusy else { return }
+                        VaultHaptics.press()
                         if !reduceMotion {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                                 refreshPulse.toggle()
@@ -152,6 +170,46 @@ struct RootView: View {
         } message: {
             Text(store.lastError ?? "Unknown error")
         }
+        .overlay {
+            VaultBottomDrawer(isPresented: $showingLanguageDrawer) {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Interface Language")
+                                .font(.title3.weight(.bold))
+                            Text("Switch instantly. Your choice is saved on this device.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "globe.asia.australia.fill")
+                            .font(.title2)
+                            .foregroundStyle(.tint)
+                    }
+
+                    HStack(spacing: 10) {
+                        ForEach(VaultLanguage.allCases) { language in
+                            Button {
+                                preferences.language = language
+                                VaultHaptics.success()
+                            } label: {
+                                VStack(spacing: 7) {
+                                    Image(systemName: language.symbol)
+                                        .font(.title3)
+                                    Text(language.nativeName)
+                                        .font(.caption.weight(.semibold))
+                                    Image(systemName: preferences.language == language ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(preferences.language == language ? Color.accentColor : .secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(VaultFluidButtonStyle(prominent: preferences.language == language))
+                        }
+                    }
+                }
+                .matchedGeometryEffect(id: "language-surface", in: languageMorph, isSource: false)
+            }
+        }
     }
 
     @ViewBuilder
@@ -159,6 +217,7 @@ struct RootView: View {
         switch selection ?? .console {
         case .console:
             VaultDashboardView(
+                sharedNamespace: sharedNavigation,
                 onOpenWorkspace: { selection = .workspace($0) },
                 onOpenSearch: { selection = .search }
             )
@@ -171,6 +230,7 @@ struct RootView: View {
         case .workspace(let id):
             WorkspaceDetailView(
                 workspaceID: id,
+                sharedNamespace: sharedNavigation,
                 onOpenAsset: { selection = .database($0) },
                 onOpenSearch: {
                     store.searchWorkspaceID = id
