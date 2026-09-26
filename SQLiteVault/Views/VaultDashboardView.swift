@@ -2,6 +2,8 @@ import SwiftUI
 
 struct VaultDashboardView: View {
     @Environment(VaultStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let sharedNamespace: Namespace.ID
     let onOpenWorkspace: (UUID) -> Void
     let onOpenSearch: () -> Void
 
@@ -36,25 +38,35 @@ struct VaultDashboardView: View {
                             icon: "cylinder.split.1x2",
                             detail: "Independent SQLite assets"
                         )
+                        .staggeredSpring(0)
                         MetricTile(
                             title: "Workspaces",
                             value: "\(store.workspaces.count)",
                             icon: "square.stack.3d.up.fill",
                             detail: "Logical multi-database groups"
                         )
+                        .staggeredSpring(1)
                         MetricTile(
                             title: "Tables",
                             value: "\(totalTables)",
                             icon: "tablecells",
                             detail: "Across inspected schemas"
                         )
+                        .staggeredSpring(2)
                         MetricTile(
                             title: "Storage",
                             value: ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file),
                             icon: "icloud",
                             detail: "\(favoriteCount) favorites"
                         )
+                        .staggeredSpring(3)
                     }
+
+                    MagneticMetricChart(
+                        labels: ["Databases", "Tables", "Workspaces", "Storage"],
+                        values: [store.assets.count, totalTables, store.workspaces.count, max(favoriteCount, 0)]
+                    )
+                    .staggeredSpring(4)
 
                     workspaceSection
                     organizationSection
@@ -88,7 +100,7 @@ struct VaultDashboardView: View {
             Button(action: onOpenSearch) {
                 Label("Search the entire Vault", systemImage: "magnifyingglass")
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(VaultFluidButtonStyle(prominent: true))
             .padding(.top, 2)
         }
         .padding(.top, 4)
@@ -112,10 +124,14 @@ struct VaultDashboardView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 16)], spacing: 16) {
                     ForEach(store.workspaces.prefix(6)) { workspace in
                         Button {
-                            onOpenWorkspace(workspace.id)
+                            VaultHaptics.selection()
+                            withAnimation(reduceMotion ? .linear(duration: 0.1) : .spring(response: 0.52, dampingFraction: 0.78)) {
+                                onOpenWorkspace(workspace.id)
+                            }
                         } label: {
-                            SoftPanel {
-                                VStack(alignment: .leading, spacing: 13) {
+                            InteractiveTiltPanel {
+                                SoftPanel {
+                                    VStack(alignment: .leading, spacing: 13) {
                                     HStack {
                                         Image(systemName: "square.stack.3d.up.fill")
                                             .font(.title3.weight(.semibold))
@@ -141,11 +157,14 @@ struct VaultDashboardView: View {
                                         }
                                     }
                                 }
-                                .padding(18)
-                                .frame(maxWidth: .infinity, minHeight: 130, alignment: .leading)
+                                    .padding(18)
+                                    .frame(maxWidth: .infinity, minHeight: 130, alignment: .leading)
+                                }
                             }
+                            .matchedGeometryEffect(id: "workspace-\(workspace.id)", in: sharedNamespace)
                         }
                         .buttonStyle(.plain)
+                        .staggeredSpring(0)
                     }
                 }
             }

@@ -89,6 +89,7 @@ struct DatabaseDetailView: View {
             HStack(spacing: 8) {
                 ForEach(Section.allCases) { section in
                     Button {
+                        VaultHaptics.selection()
                         if reduceMotion {
                             selectedSection = section
                         } else {

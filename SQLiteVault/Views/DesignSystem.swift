@@ -134,7 +134,10 @@ struct VaultGlassIconButton: View {
     }
 
     private var button: some View {
-        Button(action: action) {
+        Button {
+            VaultHaptics.press()
+            action()
+        } label: {
             Label {
                 Text(title)
             } icon: {
@@ -167,8 +170,9 @@ struct MetricTile: View {
     }
 
     var body: some View {
-        SoftPanel {
-            VStack(alignment: .leading, spacing: 14) {
+        InteractiveTiltPanel {
+            SoftPanel {
+                VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Image(systemName: icon)
                         .font(.title3.weight(.semibold))
@@ -197,8 +201,9 @@ struct MetricTile: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 124, alignment: .leading)
-            .padding(18)
+                .frame(maxWidth: .infinity, minHeight: 124, alignment: .leading)
+                .padding(18)
+            }
         }
     }
 }

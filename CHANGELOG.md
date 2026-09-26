@@ -48,3 +48,12 @@
 - Added Workspace and plugin data contracts.
 - Added GitHub Actions macOS 26 / Xcode 26.6 build gate.
 - Added sample SQLite database and local package validator.
+# V0.3.0 — tactile interaction and localization
+
+- Added touch-position 3D tilt and radial specular highlights for core cards.
+- Added spring press compression, haptic feedback and fluid capsule controls.
+- Added shared-element Workspace transitions and staggered spring list entry.
+- Added a magnetic metric scrubber with rolling numeric transitions.
+- Added a rubber-band language drawer and dynamic diffused glow border.
+- Added runtime Simplified Chinese, English and Japanese switching.
+- Preserved the existing blue-white Liquid Glass and neumorphic palette.

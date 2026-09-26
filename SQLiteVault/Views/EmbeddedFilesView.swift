@@ -231,7 +231,7 @@ private struct EmbeddedFilesSurface: View {
                     Button(action: onRefresh) {
                         Label(isScanning ? "Scanning" : "Rescan", systemImage: isScanning ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(VaultFluidButtonStyle())
                     .disabled(isScanning)
                 }
 
@@ -288,7 +288,7 @@ private struct EmbeddedFilesSurface: View {
                     }
 
                     LazyVStack(spacing: 12) {
-                        ForEach(files) { file in
+                        ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
                             EmbeddedFileRow(
                                 file: file,
                                 databaseNameVisible: databaseNameVisible,
@@ -296,6 +296,7 @@ private struct EmbeddedFilesSurface: View {
                                 onPreview: { onPreview(file) },
                                 onExport: { onExport(file) }
                             )
+                            .staggeredSpring(index)
                         }
                     }
                 }
@@ -359,12 +360,12 @@ private struct EmbeddedFileRow: View {
                             Button(action: onPreview) {
                                 Label("Preview", systemImage: "eye")
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(VaultFluidButtonStyle())
 
                             Button(action: onExport) {
                                 Label("Export", systemImage: "square.and.arrow.up")
                             }
-                            .buttonStyle(.glassProminent)
+                            .buttonStyle(VaultFluidButtonStyle(prominent: true))
                         }
                     }
                 }
