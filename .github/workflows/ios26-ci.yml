@@ -48,12 +48,12 @@ jobs:
           test -d build/Build/Products/Release-iphoneos/SQLiteVault.app
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/SQLiteVault.app Payload/
-          ditto -c -k --sequesterRsrc --keepParent Payload SQLiteVault-V0.2.1-unsigned.ipa
+          ditto -c -k --sequesterRsrc --keepParent Payload SQLiteVault-V0.3.0-unsigned.ipa
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: SQLiteVault-V0.2.1-unsigned-IPA
-          path: SQLiteVault-V0.2.1-unsigned.ipa
+          name: SQLiteVault-V0.3.0-unsigned-IPA
+          path: SQLiteVault-V0.3.0-unsigned.ipa
           if-no-files-found: error
       - name: Upload build log
         if: always()
