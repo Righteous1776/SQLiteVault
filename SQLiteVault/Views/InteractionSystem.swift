@@ -75,7 +75,7 @@ struct InteractiveTiltPanel<Content: View>: View {
     let content: Content
 
     init(@ViewBuilder content: () -> Content) {
-        content = content()
+        self.content = content()
     }
 
     var body: some View {
