@@ -1,0 +1,63 @@
+name: iOS 26 IPA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build for iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project SQLiteVault.xcodeproj \
+            -scheme SQLiteVault \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee build.log
+      - name: Build unsigned iOS app
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project SQLiteVault.xcodeproj \
+            -scheme SQLiteVault \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            build | tee -a build.log
+      - name: Package unsigned IPA
+        run: |
+          test -d build/Build/Products/Release-iphoneos/SQLiteVault.app
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/SQLiteVault.app Payload/
+          ditto -c -k --sequesterRsrc --keepParent Payload SQLiteVault-V0.2.1-unsigned.ipa
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SQLiteVault-V0.2.1-unsigned-IPA
+          path: SQLiteVault-V0.2.1-unsigned.ipa
+          if-no-files-found: error
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SQLiteVault-build-log
+          path: build.log
