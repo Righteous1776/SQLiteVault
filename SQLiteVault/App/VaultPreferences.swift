@@ -17,11 +17,27 @@ enum VaultLanguage: String, CaseIterable, Identifiable {
         }
     }
 
-    var symbol: String {
+    var shortName: String {
         switch self {
-        case .simplifiedChinese: "character.book.closed.fill.zh"
-        case .english: "character.book.closed.fill"
-        case .japanese: "character.book.closed.fill.ja"
+        case .simplifiedChinese: "中"
+        case .english: "EN"
+        case .japanese: "日"
+        }
+    }
+
+    var index: Int {
+        switch self {
+        case .simplifiedChinese: 0
+        case .english: 1
+        case .japanese: 2
+        }
+    }
+
+    static func language(at index: Int) -> VaultLanguage {
+        switch min(max(index, 0), 2) {
+        case 0: .simplifiedChinese
+        case 1: .english
+        default: .japanese
         }
     }
 }
