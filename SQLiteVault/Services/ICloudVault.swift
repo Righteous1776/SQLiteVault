@@ -45,7 +45,7 @@ actor ICloudVault {
             .contentModificationDateKey,
             .isRegularFileKey,
             .isUbiquitousItemKey,
-            .ubiquitousItemIsDownloadedKey
+            .ubiquitousItemDownloadingStatusKey
         ]
         let urls = try fileManager.contentsOfDirectory(
             at: destination.url,
@@ -53,14 +53,14 @@ actor ICloudVault {
             options: [.skipsHiddenFiles]
         )
 
-        return try urls.compactMap { url in
+        return try urls.compactMap { url -> DatabaseAsset? in
             guard acceptedExtensions.contains(url.pathExtension.lowercased()) else { return nil }
             let values = try url.resourceValues(forKeys: keys)
             guard values.isRegularFile == true else { return nil }
 
             let availability: DatabaseAsset.LocalAvailability
             if destination.location == .iCloud, values.isUbiquitousItem == true {
-                if values.ubiquitousItemIsDownloaded == true { availability = .available }
+                if values.ubiquitousItemDownloadingStatus == .current { availability = .available }
                 else { availability = .remoteOnly }
             } else {
                 availability = .available
@@ -165,12 +165,12 @@ actor ICloudVault {
         }
         let urls = try fileManager.contentsOfDirectory(
             at: documents,
-            includingPropertiesForKeys: [.isRegularFileKey, .ubiquitousItemIsDownloadedKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .ubiquitousItemDownloadingStatusKey],
             options: [.skipsHiddenFiles]
         )
         for url in urls where acceptedExtensions.contains(url.pathExtension.lowercased()) {
-            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .ubiquitousItemIsDownloadedKey])
-            guard values?.isRegularFile == true, values?.ubiquitousItemIsDownloaded != true else { continue }
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .ubiquitousItemDownloadingStatusKey])
+            guard values?.isRegularFile == true, values?.ubiquitousItemDownloadingStatus != .current else { continue }
             try? fileManager.startDownloadingUbiquitousItem(at: url)
         }
     }
@@ -529,12 +529,10 @@ actor ICloudVault {
             .contentModificationDateKey,
             .isRegularFileKey,
             .isUbiquitousItemKey,
-            .ubiquitousItemIsDownloadedKey,
+            .ubiquitousItemDownloadingStatusKey,
             .ubiquitousItemIsUploadedKey,
             .ubiquitousItemIsDownloadingKey,
             .ubiquitousItemIsUploadingKey,
-            .ubiquitousItemPercentDownloadedKey,
-            .ubiquitousItemPercentUploadedKey,
             .ubiquitousItemHasUnresolvedConflictsKey
         ]
         let urls = try fileManager.contentsOfDirectory(
@@ -543,12 +541,12 @@ actor ICloudVault {
             options: [.skipsHiddenFiles]
         )
 
-        return urls.compactMap { url in
+        return urls.compactMap { url -> ICloudFileStatus? in
             guard acceptedExtensions.contains(url.pathExtension.lowercased()),
                   let values = try? url.resourceValues(forKeys: keys),
                   values.isRegularFile == true else { return nil }
 
-            let downloaded = values.ubiquitousItemIsDownloaded ?? (values.isUbiquitousItem != true)
+            let downloaded = values.ubiquitousItemDownloadingStatus == .current || values.isUbiquitousItem != true
             let uploaded = values.ubiquitousItemIsUploaded ?? (values.isUbiquitousItem != true)
             let downloading = values.ubiquitousItemIsDownloading ?? false
             let uploading = values.ubiquitousItemIsUploading ?? false
@@ -569,8 +567,8 @@ actor ICloudVault {
                 isUploaded: uploaded,
                 isDownloading: downloading,
                 isUploading: uploading,
-                percentDownloaded: values.ubiquitousItemPercentDownloaded ?? (downloaded ? 100 : 0),
-                percentUploaded: values.ubiquitousItemPercentUploaded ?? (uploading ? 0 : 100),
+                percentDownloaded: downloaded ? 100 : (downloading ? 1 : 0),
+                percentUploaded: uploaded ? 100 : (uploading ? 1 : 0),
                 hasUnresolvedConflicts: conflict,
                 transferState: state
             )
