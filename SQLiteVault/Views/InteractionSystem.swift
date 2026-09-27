@@ -1,6 +1,8 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Haptics
+
 enum VaultHaptics {
     static func press() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.62)
@@ -13,7 +15,19 @@ enum VaultHaptics {
     static func success() {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
+
+    /// A very short rigid pulse used as a single "gear tooth" while dragging.
+    static func gearTick() {
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.30)
+    }
+
+    /// Stronger detent feedback when the control crosses one of the three languages.
+    static func gearDetent() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.82)
+    }
 }
+
+// MARK: - Buttons
 
 struct VaultFluidButtonStyle: ButtonStyle {
     var prominent = false
@@ -54,9 +68,9 @@ private struct VaultFluidButtonBody: View {
                         y: configuration.isPressed ? 1 : 5
                     )
             }
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(
-                reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.28, dampingFraction: configuration.isPressed ? 0.86 : 0.58),
+                reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.27, dampingFraction: 0.78),
                 value: configuration.isPressed
             )
             .onChange(of: configuration.isPressed) { _, pressed in
@@ -65,13 +79,12 @@ private struct VaultFluidButtonBody: View {
     }
 }
 
-struct InteractiveTiltPanel<Content: View>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var pitch = 0.0
-    @State private var yaw = 0.0
-    @State private var touch = UnitPoint.center
-    @State private var pressed = false
+// MARK: - Scroll-safe tactile panels
 
+/// V0.3.1 deliberately does not install any drag recognizer on content cards.
+/// The previous minimumDistance: 0 tilt recognizer competed with ScrollView/List.
+/// Pointer hover can still lift the card on iPad without stealing touch scrolling.
+struct InteractiveTiltPanel<Content: View>: View {
     let content: Content
 
     init(@ViewBuilder content: () -> Content) {
@@ -80,43 +93,12 @@ struct InteractiveTiltPanel<Content: View>: View {
 
     var body: some View {
         content
-            .overlay {
-                RadialGradient(
-                    colors: [.white.opacity(pressed ? 0.34 : 0.08), .clear],
-                    center: touch,
-                    startRadius: 0,
-                    endRadius: 210
-                )
-                .clipShape(RoundedRectangle(cornerRadius: VaultDesign.cardRadius, style: .continuous))
-                .allowsHitTesting(false)
-            }
-            .rotation3DEffect(.degrees(pitch), axis: (x: 1, y: 0, z: 0), perspective: 0.62)
-            .rotation3DEffect(.degrees(yaw), axis: (x: 0, y: 1, z: 0), perspective: 0.62)
-            .scaleEffect(pressed ? 0.985 : 1)
             .contentShape(RoundedRectangle(cornerRadius: VaultDesign.cardRadius, style: .continuous))
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                    .onChanged { value in
-                        guard !reduceMotion else { return }
-                        if !pressed { VaultHaptics.press() }
-                        pressed = true
-                        let nx = min(max(value.location.x / 260, 0), 1)
-                        let ny = min(max(value.location.y / 150, 0), 1)
-                        touch = UnitPoint(x: nx, y: ny)
-                        yaw = (nx - 0.5) * 8
-                        pitch = (0.5 - ny) * 8
-                    }
-                    .onEnded { _ in
-                        withAnimation(.spring(response: 0.46, dampingFraction: 0.56)) {
-                            pitch = 0
-                            yaw = 0
-                            touch = .center
-                            pressed = false
-                        }
-                    }
-            )
+            .hoverEffect(.lift)
     }
 }
+
+// MARK: - Ambient effects
 
 struct DynamicGlowBorder<S: Shape>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -131,13 +113,13 @@ struct DynamicGlowBorder<S: Shape>: View {
                     center: .center,
                     angle: .degrees(angle)
                 ),
-                lineWidth: 1.25
+                lineWidth: 1.1
             )
-            .shadow(color: .cyan.opacity(0.30), radius: 10)
-            .shadow(color: .indigo.opacity(0.20), radius: 20)
+            .shadow(color: .cyan.opacity(0.22), radius: 8)
+            .shadow(color: .indigo.opacity(0.14), radius: 16)
             .onAppear {
                 guard !reduceMotion else { return }
-                withAnimation(.linear(duration: 7).repeatForever(autoreverses: false)) {
+                withAnimation(.linear(duration: 9).repeatForever(autoreverses: false)) {
                     angle = 360
                 }
             }
@@ -153,13 +135,13 @@ struct StaggeredSpring: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 22)
-            .scaleEffect(appeared ? 1 : 0.965)
+            .offset(y: appeared ? 0 : 18)
+            .scaleEffect(appeared ? 1 : 0.975)
             .onAppear {
                 if reduceMotion {
                     appeared = true
                 } else {
-                    withAnimation(.spring(response: 0.52, dampingFraction: 0.70).delay(Double(index) * 0.055)) {
+                    withAnimation(.spring(response: 0.48, dampingFraction: 0.78).delay(Double(index) * 0.045)) {
                         appeared = true
                     }
                 }
@@ -172,6 +154,8 @@ extension View {
         modifier(StaggeredSpring(index: index))
     }
 }
+
+// MARK: - Dashboard chart
 
 struct MagneticMetricChart: View {
     let labels: [LocalizedStringKey]
@@ -189,7 +173,6 @@ struct MagneticMetricChart: View {
                     Text("\(values[safe: selectedIndex] ?? 0)")
                         .font(.system(.title, design: .rounded, weight: .bold))
                         .contentTransition(.numericText(value: Double(values[safe: selectedIndex] ?? 0)))
-                        .animation(.spring(response: 0.34, dampingFraction: 0.74), value: selectedIndex)
                 }
 
                 GeometryReader { proxy in
@@ -210,14 +193,13 @@ struct MagneticMetricChart: View {
                                 .fill(index == selectedIndex ? Color.accentColor : VaultDesign.panel)
                                 .stroke(Color.accentColor, lineWidth: 2)
                                 .frame(width: index == selectedIndex ? 15 : 10, height: index == selectedIndex ? 15 : 10)
-                                .shadow(color: Color.accentColor.opacity(index == selectedIndex ? 0.45 : 0), radius: 8)
+                                .shadow(color: Color.accentColor.opacity(index == selectedIndex ? 0.38 : 0), radius: 8)
                                 .position(points[index])
-                                .animation(.spring(response: 0.30, dampingFraction: 0.62), value: selectedIndex)
                         }
                     }
                     .contentShape(Rectangle())
                     .gesture(
-                        DragGesture(minimumDistance: 0)
+                        DragGesture(minimumDistance: 6)
                             .onChanged { value in
                                 guard !values.isEmpty else { return }
                                 let step = proxy.size.width / CGFloat(max(values.count - 1, 1))
@@ -233,7 +215,6 @@ struct MagneticMetricChart: View {
             }
             .padding(18)
         }
-        .overlay { DynamicGlowBorder(shape: RoundedRectangle(cornerRadius: VaultDesign.cardRadius, style: .continuous)) }
         .accessibilityElement(children: .combine)
     }
 
@@ -256,63 +237,272 @@ private extension Array {
     }
 }
 
-struct VaultBottomDrawer<Content: View>: View {
-    @Binding var isPresented: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var dragOffset: CGFloat = 0
-    let content: Content
+// MARK: - Language gear dial
 
-    init(isPresented: Binding<Bool>, @ViewBuilder content: () -> Content) {
-        _isPresented = isPresented
-        self.content = content()
-    }
+struct LanguageGearDialOverlay: View {
+    @Binding var language: VaultLanguage
+    @Binding var isPresented: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
+
+    @State private var knobOffset: CGFloat = 0
+    @State private var gestureStartOffset: CGFloat = 0
+    @State private var isDragging = false
+    @State private var lastTooth = Int.min
+
+    private let detentSpacing: CGFloat = 104
+    private let trackWidth: CGFloat = 152
+    private let trackHeight: CGFloat = 360
+    private let knobSize: CGFloat = 104
+    private let gearPitch: CGFloat = 9
+    private let magneticRadius: CGFloat = 34
 
     var body: some View {
-        if isPresented {
-            ZStack(alignment: .bottom) {
-                Color.black.opacity(0.22)
-                    .ignoresSafeArea()
-                    .onTapGesture { dismiss() }
+        ZStack {
+            backgroundScrim
 
-                VStack(spacing: 14) {
-                    Capsule()
-                        .fill(.secondary.opacity(0.42))
-                        .frame(width: 42, height: 5)
-                        .padding(.top, 10)
-                    content
+            VStack(spacing: 24) {
+                VStack(spacing: 7) {
+                    ZStack {
+                        Circle()
+                            .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.55))
+                            .frame(width: 58, height: 58)
+                            .glassEffect(reduceTransparency ? .identity : .regular, in: Circle())
+                        Image(systemName: "globe.asia.australia.fill")
+                            .font(.system(size: 23, weight: .semibold))
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    Text("Interface Language")
+                        .font(.headline)
+                    Text("Drag through the three tactile detents")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 22)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-                .overlay { DynamicGlowBorder(shape: RoundedRectangle(cornerRadius: 30, style: .continuous)) }
-                .padding(.horizontal, 12)
-                .offset(y: rubberBandedOffset)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in dragOffset = value.translation.height }
-                        .onEnded { value in
-                            if value.predictedEndTranslation.height > 150 || value.translation.height > 90 {
-                                dismiss()
-                            } else {
-                                VaultHaptics.selection()
-                                withAnimation(.spring(response: 0.42, dampingFraction: 0.66)) { dragOffset = 0 }
-                            }
-                        }
-                )
+
+                GlassEffectContainer(spacing: 14) {
+                    ZStack {
+                        track
+                        detentLabels
+                        knob
+                    }
+                    .frame(width: trackWidth, height: trackHeight)
+                }
+
+                Text("\(language.nativeName) · \(language.shortName)")
+                    .font(.caption.monospaced().weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
-            .zIndex(100)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 30)
+            .transition(.opacity.combined(with: .scale(scale: 0.985)))
+        }
+        .ignoresSafeArea()
+        .onAppear {
+            knobOffset = detentOffset(for: language)
+        }
+        .onChange(of: language) { _, newValue in
+            guard !isDragging else { return }
+            snap(to: newValue)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var backgroundScrim: some View {
+        ZStack {
+            Rectangle()
+                .fill(reduceTransparency ? Color(uiColor: .systemBackground) : Color.clear)
+            if !reduceTransparency {
+                Rectangle().fill(.ultraThinMaterial)
+                Color.black.opacity(colorScheme == .dark ? 0.20 : 0.08)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            dismiss()
         }
     }
 
-    private var rubberBandedOffset: CGFloat {
-        dragOffset >= 0 ? dragOffset : -sqrt(abs(dragOffset)) * 4
+    private var track: some View {
+        RoundedRectangle(cornerRadius: 76, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(colorScheme == .dark ? 0.08 : 0.58),
+                        Color.accentColor.opacity(colorScheme == .dark ? 0.05 : 0.045),
+                        Color.black.opacity(colorScheme == .dark ? 0.12 : 0.025)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 76, style: .continuous)
+                    .strokeBorder(.white.opacity(colorScheme == .dark ? 0.16 : 0.70), lineWidth: 0.9)
+            }
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.32 : 0.13), radius: 24, x: 0, y: 16)
+            .shadow(color: .white.opacity(colorScheme == .dark ? 0.025 : 0.70), radius: 14, x: -7, y: -8)
+            .glassEffect(
+                reduceTransparency ? .identity : .regular.tint(Color.accentColor.opacity(0.035)),
+                in: RoundedRectangle(cornerRadius: 76, style: .continuous)
+            )
+    }
+
+    private var detentLabels: some View {
+        ZStack {
+            ForEach(VaultLanguage.allCases) { item in
+                Text(item == language ? "" : item.nativeName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .opacity(item == language ? 0 : 0.72)
+                    .offset(y: detentOffset(for: item))
+            }
+
+            VStack {
+                Spacer()
+                Divider().opacity(0.16)
+                Spacer()
+                Divider().opacity(0.16)
+                Spacer()
+            }
+            .padding(.vertical, 74)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var knob: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(colorScheme == .dark ? 0.24 : 0.95),
+                            Color.accentColor.opacity(colorScheme == .dark ? 0.24 : 0.18),
+                            Color.blue.opacity(colorScheme == .dark ? 0.16 : 0.09)
+                        ],
+                        center: .topLeading,
+                        startRadius: 6,
+                        endRadius: knobSize
+                    )
+                )
+                .overlay {
+                    Circle()
+                        .strokeBorder(.white.opacity(colorScheme == .dark ? 0.28 : 0.88), lineWidth: 1.2)
+                }
+                .shadow(color: Color.accentColor.opacity(isDragging ? 0.34 : 0.18), radius: isDragging ? 18 : 11)
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.40 : 0.16), radius: 12, x: 0, y: 8)
+                .glassEffect(
+                    reduceTransparency ? .identity : .regular.tint(Color.accentColor.opacity(isDragging ? 0.18 : 0.10)).interactive(),
+                    in: Circle()
+                )
+
+            VStack(spacing: 3) {
+                Text(language.nativeName)
+                    .font(.system(.subheadline, design: .rounded, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(language.shortName)
+                    .font(.caption2.monospaced().weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8)
+        }
+        .frame(width: knobSize, height: knobSize)
+        .scaleEffect(isDragging ? 1.045 : 1)
+        .offset(y: knobOffset)
+        .contentShape(Circle())
+        .gesture(dragGesture)
+        .animation(reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.22, dampingFraction: 0.78), value: isDragging)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .local)
+            .onChanged { value in
+                if !isDragging {
+                    isDragging = true
+                    gestureStartOffset = detentOffset(for: language)
+                    lastTooth = Int((gestureStartOffset / gearPitch).rounded())
+                    VaultHaptics.press()
+                }
+
+                let raw = clamp(gestureStartOffset + value.translation.height)
+                let tooth = Int((raw / gearPitch).rounded())
+                if tooth != lastTooth {
+                    lastTooth = tooth
+                    VaultHaptics.gearTick()
+                }
+
+                let nearestIndex = nearestDetentIndex(for: raw)
+                let nearestLanguage = VaultLanguage.language(at: nearestIndex)
+                if nearestLanguage != language {
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        language = nearestLanguage
+                    }
+                    VaultHaptics.gearDetent()
+                }
+
+                knobOffset = magnetized(raw)
+            }
+            .onEnded { value in
+                isDragging = false
+                let projected = clamp(gestureStartOffset + value.predictedEndTranslation.height)
+                let target = VaultLanguage.language(at: nearestDetentIndex(for: projected))
+
+                if target != language {
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        language = target
+                    }
+                    VaultHaptics.gearDetent()
+                }
+                snap(to: target)
+            }
+    }
+
+    private func detentOffset(for language: VaultLanguage) -> CGFloat {
+        CGFloat(language.index - 1) * detentSpacing
+    }
+
+    private func nearestDetentIndex(for value: CGFloat) -> Int {
+        let normalized = value / detentSpacing + 1
+        return min(max(Int(normalized.rounded()), 0), 2)
+    }
+
+    private func clamp(_ value: CGFloat) -> CGFloat {
+        min(max(value, -detentSpacing), detentSpacing)
+    }
+
+    private func magnetized(_ raw: CGFloat) -> CGFloat {
+        let target = detentOffset(for: VaultLanguage.language(at: nearestDetentIndex(for: raw)))
+        let delta = raw - target
+        guard abs(delta) < magneticRadius else { return raw }
+        let normalized = abs(delta) / magneticRadius
+        let resistance = 0.28 + 0.72 * normalized * normalized
+        return target + delta * resistance
+    }
+
+    private func snap(to target: VaultLanguage) {
+        let destination = detentOffset(for: target)
+        if reduceMotion {
+            knobOffset = destination
+        } else {
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.70, blendDuration: 0.08)) {
+                knobOffset = destination
+            }
+        }
     }
 
     private func dismiss() {
-        withAnimation(reduceMotion ? .linear(duration: 0.12) : .spring(response: 0.42, dampingFraction: 0.78)) {
-            dragOffset = 0
+        if reduceMotion {
             isPresented = false
+        } else {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                isPresented = false
+            }
         }
     }
 }
