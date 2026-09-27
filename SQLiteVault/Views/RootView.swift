@@ -9,21 +9,29 @@ private enum SidebarDestination: Hashable {
     case console
     case search
     case binaryAssets
+    case a9
+    case iCloud
     case workspace(UUID)
     case database(String)
+}
+
+private enum RefreshVisualState {
+    case idle
+    case refreshing
+    case success
 }
 
 struct RootView: View {
     @Environment(VaultStore.self) private var store
     @Environment(VaultPreferences.self) private var preferences
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var selection: SidebarDestination? = .console
-    @State private var showingImporter = false
+    @State private var showingDocumentPicker = false
     @State private var showingWorkspaceEditor = false
-    @State private var refreshPulse = false
-    @State private var showingLanguageDrawer = false
-    @Namespace private var languageMorph
-    @Namespace private var sharedNavigation
+    @State private var showingActionMenu = false
+    @State private var showingLanguageDial = false
+    @State private var refreshState: RefreshVisualState = .idle
 
     var body: some View {
         NavigationSplitView {
@@ -41,6 +49,25 @@ struct RootView: View {
 
                         Label("Binary Assets", systemImage: "doc.on.doc.fill")
                             .tag(SidebarDestination.binaryAssets)
+
+
+                        HStack(spacing: 9) {
+                            Label("A9 Health", systemImage: "cpu")
+                            Spacer()
+                            Circle()
+                                .fill(store.a9Decisions.isEmpty ? Color.secondary.opacity(0.55) : (store.a9RedCount > 0 ? Color.red : (store.a9YellowCount > 0 ? Color.orange : Color.green)))
+                                .frame(width: 7, height: 7)
+                        }
+                        .tag(SidebarDestination.a9)
+
+                        HStack(spacing: 9) {
+                            Label("iCloud", systemImage: store.cloudStatus.isConnected ? "icloud.fill" : "icloud.slash")
+                            Spacer()
+                            Circle()
+                                .fill(store.cloudStatus.isConnected ? Color.green : Color.secondary.opacity(0.55))
+                                .frame(width: 7, height: 7)
+                        }
+                        .tag(SidebarDestination.iCloud)
                     }
 
                     Section {
@@ -93,55 +120,30 @@ struct RootView: View {
             .navigationTitle("SQLite Vault")
             .toolbar {
                 ToolbarItemGroup {
-                    Button {
+                    toolbarIcon("plus", accessibility: "Add") {
                         VaultHaptics.press()
-                        showingWorkspaceEditor = true
-                    } label: {
-                        Label("New Workspace", systemImage: "square.stack.3d.up.badge.plus")
+                        showingActionMenu = true
                     }
-                    .buttonStyle(.glass)
 
-                    Button {
+                    toolbarIcon("globe", accessibility: "Interface Language") {
                         VaultHaptics.selection()
-                        withAnimation(reduceMotion ? .linear(duration: 0.12) : .spring(response: 0.42, dampingFraction: 0.72)) {
-                            showingLanguageDrawer = true
-                        }
-                    } label: {
-                        Label(preferences.language.nativeName, systemImage: "globe")
-                    }
-                    .buttonStyle(.glass)
-                    .matchedGeometryEffect(id: "language-surface", in: languageMorph)
-
-                    Button {
-                        VaultHaptics.press()
-                        showingImporter = true
-                    } label: {
-                        Label("Import", systemImage: "plus")
-                    }
-                    .buttonStyle(.glassProminent)
-
-                    Button {
-                        guard !store.isBusy else { return }
-                        VaultHaptics.press()
-                        if !reduceMotion {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                                refreshPulse.toggle()
-                            }
+                        if reduceMotion {
+                            showingLanguageDial = true
                         } else {
-                            refreshPulse.toggle()
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                                showingLanguageDial = true
+                            }
                         }
-                        Task { await store.refresh() }
-                    } label: {
-                        MorphingSymbol(
-                            primary: "arrow.clockwise",
-                            alternate: "checkmark",
-                            alternateState: refreshPulse && !store.isBusy,
-                            font: .body.weight(.semibold)
-                        )
-                        .accessibilityLabel("Refresh")
+                    }
+
+                    Button(action: refresh) {
+                        refreshIcon
+                            .frame(width: 20, height: 20)
+                            .frame(width: 32, height: 32)
                     }
                     .buttonStyle(.glass)
-                    .disabled(store.isBusy)
+                    .disabled(refreshState == .refreshing)
+                    .accessibilityLabel("Refresh")
                 }
             }
         } detail: {
@@ -152,15 +154,26 @@ struct RootView: View {
             WorkspaceEditorView(workspace: nil)
                 .environment(store)
         }
-        .fileImporter(
-            isPresented: $showingImporter,
-            allowedContentTypes: [.sqliteVaultDatabase, .database],
-            allowsMultipleSelection: true
-        ) { result in
-            guard case .success(let urls) = result else { return }
-            Task {
-                for url in urls { await store.importDatabase(from: url) }
+        .sheet(isPresented: $showingDocumentPicker) {
+            SQLiteDocumentPicker(
+                onPick: { urls in
+                    showingDocumentPicker = false
+                    importDatabases(urls)
+                },
+                onCancel: {
+                    showingDocumentPicker = false
+                }
+            )
+            .ignoresSafeArea()
+        }
+        .confirmationDialog("Add to SQLite Vault", isPresented: $showingActionMenu, titleVisibility: .visible) {
+            Button("Import Database") {
+                showingDocumentPicker = true
             }
+            Button("New Workspace") {
+                showingWorkspaceEditor = true
+            }
+            Button("Cancel", role: .cancel) {}
         }
         .alert("SQLite Vault", isPresented: Binding(
             get: { store.lastError != nil },
@@ -171,43 +184,78 @@ struct RootView: View {
             Text(store.lastError ?? "Unknown error")
         }
         .overlay {
-            VaultBottomDrawer(isPresented: $showingLanguageDrawer) {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Interface Language")
-                                .font(.title3.weight(.bold))
-                            Text("Switch instantly. Your choice is saved on this device.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "globe.asia.australia.fill")
-                            .font(.title2)
-                            .foregroundStyle(.tint)
-                    }
-
-                    HStack(spacing: 10) {
-                        ForEach(VaultLanguage.allCases) { language in
-                            Button {
-                                preferences.language = language
-                                VaultHaptics.success()
-                            } label: {
-                                VStack(spacing: 7) {
-                                    Image(systemName: language.symbol)
-                                        .font(.title3)
-                                    Text(language.nativeName)
-                                        .font(.caption.weight(.semibold))
-                                    Image(systemName: preferences.language == language ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(preferences.language == language ? Color.accentColor : .secondary)
-                                }
-                                .frame(maxWidth: .infinity)
+            if showingLanguageDial {
+                LanguageGearDialOverlay(
+                    language: Binding(
+                        get: { preferences.language },
+                        set: { newLanguage in
+                            var transaction = Transaction(animation: nil)
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) {
+                                preferences.language = newLanguage
                             }
-                            .buttonStyle(VaultFluidButtonStyle(prominent: preferences.language == language))
                         }
-                    }
+                    ),
+                    isPresented: $showingLanguageDial
+                )
+                .zIndex(500)
+            }
+        }
+    }
+
+    private func toolbarIcon(_ systemName: String, accessibility: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.body.weight(.semibold))
+                .frame(width: 20, height: 20)
+                .frame(width: 32, height: 32)
+        }
+        .buttonStyle(.glass)
+        .accessibilityLabel(accessibility)
+    }
+
+    @ViewBuilder
+    private var refreshIcon: some View {
+        switch refreshState {
+        case .idle:
+            Image(systemName: "arrow.clockwise")
+                .font(.body.weight(.semibold))
+        case .refreshing:
+            ProgressView()
+                .controlSize(.small)
+        case .success:
+            Image(systemName: "checkmark")
+                .font(.body.weight(.bold))
+                .foregroundStyle(.green)
+                .contentTransition(.symbolEffect(.replace))
+        }
+    }
+
+    private func refresh() {
+        guard refreshState != .refreshing else { return }
+        VaultHaptics.press()
+        refreshState = .refreshing
+
+        Task {
+            await store.refresh()
+            refreshState = .success
+            VaultHaptics.success()
+            try? await Task.sleep(nanoseconds: 420_000_000)
+            if reduceMotion {
+                refreshState = .idle
+            } else {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                    refreshState = .idle
                 }
-                .matchedGeometryEffect(id: "language-surface", in: languageMorph, isSource: false)
+            }
+        }
+    }
+
+    private func importDatabases(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        Task {
+            for url in urls {
+                await store.importDatabase(from: url)
             }
         }
     }
@@ -217,7 +265,6 @@ struct RootView: View {
         switch selection ?? .console {
         case .console:
             VaultDashboardView(
-                sharedNamespace: sharedNavigation,
                 onOpenWorkspace: { selection = .workspace($0) },
                 onOpenSearch: { selection = .search }
             )
@@ -227,10 +274,13 @@ struct RootView: View {
             }
         case .binaryAssets:
             VaultEmbeddedFilesView()
+        case .a9:
+            A9HealthConsoleView()
+        case .iCloud:
+            ICloudControlCenterView()
         case .workspace(let id):
             WorkspaceDetailView(
                 workspaceID: id,
-                sharedNamespace: sharedNavigation,
                 onOpenAsset: { selection = .database($0) },
                 onOpenSearch: {
                     store.searchWorkspaceID = id
@@ -285,9 +335,9 @@ private struct DatabaseSidebarRow: View {
 
     var body: some View {
         HStack(spacing: 11) {
-            Image(systemName: metadata.isFavorite ? "star.fill" : (asset.location == .iCloud ? "externaldrive.connected.to.line.below" : "externaldrive"))
+            Image(systemName: sidebarSymbol)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(metadata.isFavorite ? Color.yellow : Color.accentColor)
+                .foregroundStyle(metadata.isFavorite ? Color.yellow : (asset.isLocallyAvailable ? Color.accentColor : Color.secondary))
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -300,11 +350,25 @@ private struct DatabaseSidebarRow: View {
                         Text("•")
                     }
                     Text(ByteCountFormatter.string(fromByteCount: asset.sizeBytes, countStyle: .file))
+                    if asset.location == .iCloud && !asset.isLocallyAvailable {
+                        Text("•")
+                        Text(asset.localAvailability == .downloading ? "Downloading" : "iCloud Only")
+                    }
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 3)
+    }
+
+    private var sidebarSymbol: String {
+        if metadata.isFavorite { return "star.fill" }
+        if asset.location == .localFallback { return "externaldrive" }
+        switch asset.localAvailability {
+        case .available: return "externaldrive.fill.badge.icloud"
+        case .downloading: return "icloud.and.arrow.down.fill"
+        case .remoteOnly: return "icloud.fill"
+        }
     }
 }

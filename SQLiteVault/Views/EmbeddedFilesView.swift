@@ -28,7 +28,13 @@ struct DatabaseEmbeddedFilesView: View {
             onExport: { file in extract(file, action: .share) }
         )
         .task(id: database.fileURL) { scan() }
-        .quickLookPreview($previewURL)
+        // Use a UIKit controller because the SwiftUI quickLookPreview modifier is macOS-only.
+        .sheet(isPresented: Binding(
+            get: { previewURL != nil },
+            set: { if !$0 { previewURL = nil } }
+        )) {
+            if let previewURL { QuickLookPreviewController(url: previewURL) }
+        }
         .sheet(isPresented: Binding(
             get: { shareURL != nil },
             set: { if !$0 { shareURL = nil } }
@@ -130,7 +136,12 @@ struct VaultEmbeddedFilesView: View {
         }
         .navigationTitle("Binary Assets")
         .task { if files.isEmpty { scanAll() } }
-        .quickLookPreview($previewURL)
+        .sheet(isPresented: Binding(
+            get: { previewURL != nil },
+            set: { if !$0 { previewURL = nil } }
+        )) {
+            if let previewURL { QuickLookPreviewController(url: previewURL) }
+        }
         .sheet(isPresented: Binding(
             get: { shareURL != nil },
             set: { if !$0 { shareURL = nil } }
@@ -164,7 +175,7 @@ struct VaultEmbeddedFilesView: View {
     private func scanAll() {
         guard !isScanning else { return }
         isScanning = true
-        let databases = store.assets
+        let databases = store.assets.filter(\.isLocallyAvailable)
         Task {
             var combined: [EmbeddedBinaryAsset] = []
             var failures: [String] = []
@@ -231,7 +242,7 @@ private struct EmbeddedFilesSurface: View {
                     Button(action: onRefresh) {
                         Label(isScanning ? "Scanning" : "Rescan", systemImage: isScanning ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
                     }
-                    .buttonStyle(VaultFluidButtonStyle())
+                    .buttonStyle(.glass)
                     .disabled(isScanning)
                 }
 
@@ -360,12 +371,12 @@ private struct EmbeddedFileRow: View {
                             Button(action: onPreview) {
                                 Label("Preview", systemImage: "eye")
                             }
-                            .buttonStyle(VaultFluidButtonStyle())
+                            .buttonStyle(.glass)
 
                             Button(action: onExport) {
                                 Label("Export", systemImage: "square.and.arrow.up")
                             }
-                            .buttonStyle(VaultFluidButtonStyle(prominent: true))
+                            .buttonStyle(.glassProminent)
                         }
                     }
                 }
@@ -383,4 +394,30 @@ private struct ActivityShareView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+private struct QuickLookPreviewController: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
+
+    func makeUIViewController(context: Context) -> QLPreviewController {
+        let controller = QLPreviewController()
+        controller.dataSource = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: QLPreviewController, context: Context) {}
+
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        let url: URL
+
+        init(url: URL) { self.url = url }
+
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> (any QLPreviewItem) {
+            url as NSURL
+        }
+    }
 }

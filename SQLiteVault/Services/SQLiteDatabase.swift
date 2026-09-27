@@ -35,6 +35,35 @@ final class SQLiteDatabase: @unchecked Sendable {
 
     deinit { sqlite3_close(handle) }
 
+    func integrityCheck() throws -> String {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, "PRAGMA integrity_check", -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.prepare(errorMessage)
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw DatabaseError.step(errorMessage)
+        }
+        return sqlite3_column_text(statement, 0).map { String(cString: $0) } ?? "unknown"
+    }
+
+    func foreignKeyViolationCount(limit: Int = 10_000) throws -> Int {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, "PRAGMA foreign_key_check", -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.prepare(errorMessage)
+        }
+        defer { sqlite3_finalize(statement) }
+
+        var count = 0
+        while count < limit {
+            let result = sqlite3_step(statement)
+            if result == SQLITE_DONE { break }
+            guard result == SQLITE_ROW else { throw DatabaseError.step(errorMessage) }
+            count += 1
+        }
+        return count
+    }
+
     func scalarInt(_ sql: String) throws -> Int {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {

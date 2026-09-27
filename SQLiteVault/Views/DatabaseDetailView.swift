@@ -5,6 +5,7 @@ struct DatabaseDetailView: View {
         case overview = "Overview"
         case schema = "Schema"
         case files = "Files"
+        case health = "A9"
         case sql = "SQL"
 
         var id: String { rawValue }
@@ -14,6 +15,7 @@ struct DatabaseDetailView: View {
             case .overview: "rectangle.grid.2x2"
             case .schema: "tablecells"
             case .files: "doc.on.doc"
+            case .health: "cpu"
             case .sql: "terminal"
             }
         }
@@ -32,31 +34,45 @@ struct DatabaseDetailView: View {
         ZStack {
             VaultBackground()
 
-            VStack(spacing: 0) {
-                sectionPicker
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
-                    .padding(.bottom, 10)
+            if asset.isLocallyAvailable {
+                VStack(spacing: 0) {
+                    sectionPicker
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                        .padding(.bottom, 10)
 
-                Group {
-                    switch selectedSection {
-                    case .overview:
-                        DatabaseOverviewView(asset: asset)
-                    case .schema:
-                        SchemaBrowserView(asset: asset, objects: schemaObjects)
-                    case .files:
-                        DatabaseEmbeddedFilesView(database: asset)
-                    case .sql:
-                        SQLConsoleView(asset: asset)
+                    Group {
+                        switch selectedSection {
+                        case .overview:
+                            DatabaseOverviewView(asset: asset)
+                        case .schema:
+                            SchemaBrowserView(asset: asset, objects: schemaObjects)
+                        case .files:
+                            DatabaseEmbeddedFilesView(database: asset)
+                        case .health:
+                            DatabaseA9HealthView(asset: asset)
+                        case .sql:
+                            SQLConsoleView(asset: asset)
+                        }
                     }
+                    .id(selectedSection)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.985)))
                 }
-                .id(selectedSection)
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.985)))
+            } else {
+                RemoteDatabasePlaceholder(asset: asset)
             }
         }
         .navigationTitle(asset.name)
         .toolbar {
-            ToolbarItem {
+            ToolbarItemGroup {
+                Button {
+                    Task { await store.createRecoveryPoint(for: asset) }
+                } label: {
+                    Label("Restore Point", systemImage: "clock.arrow.circlepath")
+                }
+                .buttonStyle(.glass)
+                .disabled(!asset.isLocallyAvailable)
+
                 Button { showingMetadataEditor = true } label: {
                     Label("Organize", systemImage: "tag")
                 }
@@ -67,13 +83,16 @@ struct DatabaseDetailView: View {
             AssetMetadataEditorView(asset: asset)
                 .environment(store)
         }
-        .task(id: asset.fileURL) {
+        .task(id: "\(asset.fileURL.path)|\(asset.localAvailability.rawValue)") {
+            guard asset.isLocallyAvailable else { return }
+            await store.markDatabaseOpened(asset)
             do {
                 schemaObjects = try SchemaInspector().inspect(url: asset.fileURL).0
             } catch {
                 errorText = error.localizedDescription
             }
         }
+        .onDisappear { store.markDatabaseClosed(asset) }
         .alert("Unable to inspect database", isPresented: Binding(
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
@@ -85,46 +104,138 @@ struct DatabaseDetailView: View {
     }
 
     private var sectionPicker: some View {
-        GlassEffectContainer(spacing: 10) {
-            HStack(spacing: 8) {
-                ForEach(Section.allCases) { section in
-                    Button {
-                        VaultHaptics.selection()
-                        if reduceMotion {
-                            selectedSection = section
-                        } else {
-                            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            GlassEffectContainer(spacing: 10) {
+                HStack(spacing: 8) {
+                    ForEach(Section.allCases) { section in
+                        Button {
+                            VaultHaptics.selection()
+                            if reduceMotion {
                                 selectedSection = section
+                            } else {
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                                    selectedSection = section
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: section.icon)
+                                    .contentTransition(.symbolEffect(.replace))
+                                Text(section.rawValue)
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .frame(minWidth: 82)
+                            .contentShape(Rectangle())
+                            .if(section == selectedSection) { view in
+                                view
+                                    .glassEffect(
+                                        .regular.tint(Color.accentColor.opacity(0.22)).interactive(),
+                                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    )
+                                    .glassEffectID("selected-database-section", in: sectionGlass)
                             }
                         }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: section.icon)
-                                .contentTransition(.symbolEffect(.replace))
-                            Text(section.rawValue)
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
-                        .if(section == selectedSection) { view in
-                            view
-                                .glassEffect(
-                                    .regular.tint(Color.accentColor.opacity(0.22)).interactive(),
-                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                )
-                                .glassEffectID("selected-database-section", in: sectionGlass)
-                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(section == selectedSection ? .primary : .secondary)
+                        .accessibilityAddTraits(section == selectedSection ? .isSelected : [])
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(section == selectedSection ? .primary : .secondary)
-                    .accessibilityAddTraits(section == selectedSection ? .isSelected : [])
                 }
             }
+            .padding(5)
+            .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
         }
-        .padding(5)
-        .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+    }
+
+}
+
+private struct RemoteDatabasePlaceholder: View {
+    @Environment(VaultStore.self) private var store
+    let asset: DatabaseAsset
+
+    private var cloudFile: ICloudFileStatus? {
+        store.cloudStatus.cloudFiles.first { $0.fileName == asset.fileName }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                SoftPanel {
+                    VStack(spacing: 18) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.accentColor.opacity(0.12))
+                                .frame(width: 74, height: 74)
+                            Image(systemName: asset.localAvailability == .downloading ? "icloud.and.arrow.down.fill" : "icloud.fill")
+                                .font(.system(size: 30, weight: .semibold))
+                                .foregroundStyle(.tint)
+                        }
+
+                        VStack(spacing: 6) {
+                            Text(asset.name)
+                                .font(.system(.title2, design: .rounded, weight: .bold))
+                            Text(asset.localAvailability == .downloading ? "Downloading from iCloud" : "Stored in iCloud")
+                                .font(.headline)
+                            Text("SQLite Vault keeps the cloud copy visible without forcing it onto this device. Download the database before browsing Schema, SQL, or embedded documents.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: 560)
+                        }
+
+                        let preparation = store.preparationStatus(for: asset.fileName)
+                        if preparation.isRunning {
+                            VStack(spacing: 8) {
+                                ProgressView(value: preparation.progress, total: 1)
+                                    .frame(maxWidth: 380)
+                                Text(preparation.message)
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if preparation.phase == .failed {
+                            VStack(spacing: 10) {
+                                Label(preparation.message, systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                                    .multilineTextAlignment(.center)
+                                Button {
+                                    Task { await store.prepareDatabaseForOpen(asset) }
+                                } label: {
+                                    Label("Retry Download & Verify", systemImage: "arrow.clockwise")
+                                }
+                                .buttonStyle(.glassProminent)
+                            }
+                        } else if let cloudFile, cloudFile.isDownloading {
+                            ProgressView(value: cloudFile.percentDownloaded, total: 100)
+                                .frame(maxWidth: 360)
+                            Text("Downloading from iCloud · \(Int(cloudFile.percentDownloaded.rounded()))%")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Button {
+                                Task { await store.prepareDatabaseForOpen(asset) }
+                            } label: {
+                                Label("Download & Verify", systemImage: "icloud.and.arrow.down")
+                            }
+                            .buttonStyle(.glassProminent)
+                        }
+
+                        HStack(spacing: 16) {
+                            Label(ByteCountFormatter.string(fromByteCount: asset.sizeBytes, countStyle: .file), systemImage: "externaldrive")
+                            Label("iCloud master copy", systemImage: "checkmark.icloud.fill")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(28)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
+        }
     }
 }
 

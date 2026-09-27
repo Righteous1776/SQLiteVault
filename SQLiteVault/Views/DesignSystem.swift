@@ -134,10 +134,7 @@ struct VaultGlassIconButton: View {
     }
 
     private var button: some View {
-        Button {
-            VaultHaptics.press()
-            action()
-        } label: {
+        Button(action: action) {
             Label {
                 Text(title)
             } icon: {
