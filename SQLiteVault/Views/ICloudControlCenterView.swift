@@ -144,7 +144,7 @@ struct ICloudControlCenterView: View {
                                 Spacer(minLength: 12)
                                 Image(systemName: store.storageMode == mode ? "checkmark.circle.fill" : "circle")
                                     .font(.title3)
-                                    .foregroundStyle(store.storageMode == mode ? Color.accentColor : .tertiary)
+                                    .foregroundStyle(store.storageMode == mode ? Color.accentColor : Color.secondary)
                             }
                             .contentShape(Rectangle())
                         }
