@@ -28,7 +28,8 @@ struct CrossVaultSearchService: Sendable {
                 ))
             }
 
-            guard let (objects, _) = try? inspector.inspect(url: asset.fileURL) else { continue }
+            guard asset.isLocallyAvailable,
+                  let (objects, _) = try? inspector.inspect(url: asset.fileURL) else { continue }
             for object in objects.prefix(80) {
                 if hits.count >= maxHits { break }
 

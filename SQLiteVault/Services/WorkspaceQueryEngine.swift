@@ -29,7 +29,7 @@ struct WorkspaceQueryEngine: Sendable {
     }
 
     func attachments(for assets: [DatabaseAsset]) -> [WorkspaceAttachment] {
-        assets.enumerated().map { offset, asset in
+        assets.filter(\.isLocallyAvailable).enumerated().map { offset, asset in
             WorkspaceAttachment(alias: "db\(offset + 1)", asset: asset)
         }
     }
