@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 import plistlib
 import sqlite3
-from PIL import Image
+import struct
 
 root = Path(__file__).resolve().parents[1]
 
@@ -32,11 +32,15 @@ with open(root/'SQLiteVault/Resources/Info.plist','rb') as f:
 with open(root/'SQLiteVault/Resources/SQLiteVault.entitlements','rb') as f:
     plistlib.load(f)
 
-# Asset catalog is structurally valid and app icon is 1024 square.
+# Asset catalog is structurally valid and app icon is 1024 square.  Parse the
+# PNG IHDR directly so CI does not depend on Pillow being installed.
 with open(root/'SQLiteVault/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json') as f:
     json.load(f)
-icon = Image.open(root/'SQLiteVault/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png')
-assert icon.size == (1024, 1024)
+with open(root/'SQLiteVault/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png', 'rb') as f:
+    header = f.read(24)
+assert header[:8] == b'\x89PNG\r\n\x1a\n'
+assert header[12:16] == b'IHDR'
+assert struct.unpack('>II', header[16:24]) == (1024, 1024)
 
 # Sample databases remain intact.
 checks = [
