@@ -50,12 +50,13 @@ for filename, table, expected in checks:
     con.close()
 
 # Workspace logical composition remains read-only and functional.
-# Enable SQLite URI filenames so the attached fixtures are opened in strict
-# read-only mode on both local Python and the macOS GitHub Actions runner.
-workspace = sqlite3.connect(':memory:', uri=True)
+# This fixture only executes SELECT statements.  Use filesystem paths instead
+# of URI attachments because Python's SQLite builds differ in ATTACH URI
+# handling between local environments and the macOS Actions runner.
+workspace = sqlite3.connect(':memory:')
 for alias, filename in [('db1', 'SQLiteVaultDemo.sqlite'), ('db2', 'SQLiteVaultResearchDemo.sqlite')]:
-    uri = (root/'Samples'/filename).resolve().as_uri() + '?mode=ro'
-    workspace.execute(f"ATTACH DATABASE ? AS {alias}", (uri,))
+    fixture_path = str((root/'Samples'/filename).resolve())
+    workspace.execute(f"ATTACH DATABASE ? AS {alias}", (fixture_path,))
 logical_count = workspace.execute(
     "SELECT count(*) FROM db1.chapters UNION ALL SELECT count(*) FROM db2.notes"
 ).fetchall()
