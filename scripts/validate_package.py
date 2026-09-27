@@ -50,7 +50,9 @@ for filename, table, expected in checks:
     con.close()
 
 # Workspace logical composition remains read-only and functional.
-workspace = sqlite3.connect(':memory:')
+# Enable SQLite URI filenames so the attached fixtures are opened in strict
+# read-only mode on both local Python and the macOS GitHub Actions runner.
+workspace = sqlite3.connect(':memory:', uri=True)
 for alias, filename in [('db1', 'SQLiteVaultDemo.sqlite'), ('db2', 'SQLiteVaultResearchDemo.sqlite')]:
     uri = (root/'Samples'/filename).resolve().as_uri() + '?mode=ro'
     workspace.execute(f"ATTACH DATABASE ? AS {alias}", (uri,))
