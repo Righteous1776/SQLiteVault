@@ -1,6 +1,6 @@
 import Foundation
 
-struct CacheMaintenanceService: Sendable {
+struct CacheMaintenanceService {
     private let fileManager = FileManager.default
 
     private var extractionRoot: URL {
