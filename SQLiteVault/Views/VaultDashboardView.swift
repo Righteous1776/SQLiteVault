@@ -3,7 +3,6 @@ import SwiftUI
 struct VaultDashboardView: View {
     @Environment(VaultStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let sharedNamespace: Namespace.ID
     let onOpenWorkspace: (UUID) -> Void
     let onOpenSearch: () -> Void
 
@@ -32,27 +31,12 @@ struct VaultDashboardView: View {
                     hero
 
                     LazyVGrid(columns: columns, spacing: 16) {
-                        MetricTile(
-                            title: "Databases",
-                            value: "\(store.assets.count)",
-                            icon: "cylinder.split.1x2",
-                            detail: "Independent SQLite assets"
-                        )
-                        .staggeredSpring(0)
-                        MetricTile(
-                            title: "Workspaces",
-                            value: "\(store.workspaces.count)",
-                            icon: "square.stack.3d.up.fill",
-                            detail: "Logical multi-database groups"
-                        )
-                        .staggeredSpring(1)
-                        MetricTile(
-                            title: "Tables",
-                            value: "\(totalTables)",
-                            icon: "tablecells",
-                            detail: "Across inspected schemas"
-                        )
-                        .staggeredSpring(2)
+                        MetricTile(title: "Databases", value: "\(store.assets.count)", icon: "cylinder.split.1x2", detail: "Independent SQLite assets")
+                            .staggeredSpring(0)
+                        MetricTile(title: "Workspaces", value: "\(store.workspaces.count)", icon: "square.stack.3d.up.fill", detail: "Logical multi-database groups")
+                            .staggeredSpring(1)
+                        MetricTile(title: "Tables", value: "\(totalTables)", icon: "tablecells", detail: "Across inspected schemas")
+                            .staggeredSpring(2)
                         MetricTile(
                             title: "Storage",
                             value: ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file),
@@ -117,7 +101,7 @@ struct VaultDashboardView: View {
             if store.workspaces.isEmpty {
                 EmptyStatePanel(
                     title: "Create your first Workspace",
-                    message: "Use New Workspace in the toolbar to combine related databases into one logical console.",
+                    message: "Use the + menu in the toolbar to combine related databases into one logical console.",
                     systemImage: "square.stack.3d.up.badge.plus"
                 )
             } else {
@@ -125,43 +109,40 @@ struct VaultDashboardView: View {
                     ForEach(store.workspaces.prefix(6)) { workspace in
                         Button {
                             VaultHaptics.selection()
-                            withAnimation(reduceMotion ? .linear(duration: 0.1) : .spring(response: 0.52, dampingFraction: 0.78)) {
-                                onOpenWorkspace(workspace.id)
-                            }
+                            onOpenWorkspace(workspace.id)
                         } label: {
                             InteractiveTiltPanel {
                                 SoftPanel {
                                     VStack(alignment: .leading, spacing: 13) {
-                                    HStack {
-                                        Image(systemName: "square.stack.3d.up.fill")
-                                            .font(.title3.weight(.semibold))
-                                            .symbolRenderingMode(.hierarchical)
-                                            .foregroundStyle(.tint)
-                                        Spacer()
-                                        Text("\(store.assets(in: workspace).count)")
-                                            .font(.caption.monospacedDigit().weight(.bold))
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Text(workspace.name)
-                                        .font(.headline)
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-
-                                    HStack(spacing: 7) {
-                                        if let category = workspace.category {
-                                            VaultTagChip(text: category, systemImage: "folder.fill", emphasized: true)
+                                        HStack {
+                                            Image(systemName: "square.stack.3d.up.fill")
+                                                .font(.title3.weight(.semibold))
+                                                .symbolRenderingMode(.hierarchical)
+                                                .foregroundStyle(.tint)
+                                            Spacer()
+                                            Text("\(store.assets(in: workspace).count)")
+                                                .font(.caption.monospacedDigit().weight(.bold))
+                                                .foregroundStyle(.secondary)
                                         }
-                                        ForEach(workspace.tags.prefix(2), id: \.self) { tag in
-                                            VaultTagChip(text: tag)
+
+                                        Text(workspace.name)
+                                            .font(.headline)
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+
+                                        HStack(spacing: 7) {
+                                            if let category = workspace.category {
+                                                VaultTagChip(text: category, systemImage: "folder.fill", emphasized: true)
+                                            }
+                                            ForEach(workspace.tags.prefix(2), id: \.self) { tag in
+                                                VaultTagChip(text: tag)
+                                            }
                                         }
                                     }
-                                }
                                     .padding(18)
                                     .frame(maxWidth: .infinity, minHeight: 130, alignment: .leading)
                                 }
                             }
-                            .matchedGeometryEffect(id: "workspace-\(workspace.id)", in: sharedNamespace)
                         }
                         .buttonStyle(.plain)
                         .staggeredSpring(0)
@@ -216,21 +197,48 @@ struct VaultDashboardView: View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(
                 "Control plane status",
-                eyebrow: "V0.2",
-                subtitle: "The app has moved beyond a single-database viewer."
+                eyebrow: "V0.3.5",
+                subtitle: "Cloud storage, Recovery and A9 deterministic database-health arbitration are active."
             )
 
             SoftPanel {
                 VStack(spacing: 0) {
-                    StatusRow(title: "iCloud Vault", subtitle: "Cloud assets with local fallback", icon: "icloud")
+                    StatusRow(
+                        title: "iCloud Vault",
+                        subtitle: store.cloudStatus.isConnected
+                            ? "Connected · \(store.cloudStatus.cloudFileCount) cloud database(s)"
+                            : store.cloudStatus.detail,
+                        icon: store.cloudStatus.isConnected ? "icloud.fill" : "icloud.slash",
+                        completed: store.cloudStatus.isConnected
+                    )
                     Divider().padding(.leading, 49)
                     StatusRow(title: "Workspace catalog", subtitle: "Persistent logical database groups", icon: "square.stack.3d.up")
                     Divider().padding(.leading, 49)
                     StatusRow(title: "Cross-database SQL", subtitle: "Read-only ATTACH aliases db1, db2, …", icon: "link")
                     Divider().padding(.leading, 49)
-                    StatusRow(title: "Categories & tags", subtitle: "Cloud metadata independent of source schema", icon: "tag")
+                    StatusRow(
+                        title: "Optimize Device Storage",
+                        subtitle: store.storageMode == .optimized
+                            ? "iCloud master · local copies reclaimed safely under storage pressure"
+                            : store.storageMode.title,
+                        icon: "internaldrive.fill.badge.icloud",
+                        completed: store.cloudStatus.isConnected
+                    )
                     Divider().padding(.leading, 49)
-                    StatusRow(title: "Global search", subtitle: "Schema and bounded row search across Vault", icon: "magnifyingglass")
+                    StatusRow(
+                        title: "A9 database health",
+                        subtitle: store.a9Decisions.isEmpty
+                            ? "Awaiting the first deterministic health scan"
+                            : (store.a9RedCount > 0
+                                ? "RED · \(store.a9RedCount) database(s) require review"
+                                : (store.a9YellowCount > 0 ? "YELLOW · \(store.a9YellowCount) advisory database(s)" : "GREEN · deterministic advisory lattice active")),
+                        icon: "cpu",
+                        completed: !store.a9Decisions.isEmpty && store.a9RedCount == 0
+                    )
+                    Divider().padding(.leading, 49)
+                    StatusRow(title: "Binary Assets", subtitle: "Selective embedded document extraction", icon: "doc.on.doc")
+                    Divider().padding(.leading, 49)
+                    StatusRow(title: "Tactile language dial", subtitle: "Three magnetic detents with gear haptics", icon: "globe")
                 }
                 .padding(18)
             }

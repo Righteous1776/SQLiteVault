@@ -3,7 +3,6 @@ import SwiftUI
 struct WorkspaceDetailView: View {
     @Environment(VaultStore.self) private var store
     let workspaceID: UUID
-    let sharedNamespace: Namespace.ID
     let onOpenAsset: (String) -> Void
     let onOpenSearch: () -> Void
 
@@ -25,7 +24,6 @@ struct WorkspaceDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 26) {
                         header(workspace: workspace, assets: assets)
-                            .matchedGeometryEffect(id: "workspace-\(workspace.id)", in: sharedNamespace)
                         databaseSection(workspace: workspace, assets: assets)
                         logicalSessionSection(assets: assets)
                     }
@@ -192,7 +190,7 @@ struct WorkspaceDetailView: View {
                                 Label("Run", systemImage: "play.fill")
                             }
                         }
-                        .buttonStyle(VaultFluidButtonStyle(prominent: true))
+                        .buttonStyle(.glassProminent)
                         .disabled(isRunning || assets.isEmpty || sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }

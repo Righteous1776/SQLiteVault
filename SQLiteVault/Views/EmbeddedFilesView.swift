@@ -1,6 +1,5 @@
 import SwiftUI
 import UIKit
-import QuickLook
 
 struct DatabaseEmbeddedFilesView: View {
     let database: DatabaseAsset
@@ -164,7 +163,7 @@ struct VaultEmbeddedFilesView: View {
     private func scanAll() {
         guard !isScanning else { return }
         isScanning = true
-        let databases = store.assets
+        let databases = store.assets.filter(\.isLocallyAvailable)
         Task {
             var combined: [EmbeddedBinaryAsset] = []
             var failures: [String] = []
@@ -231,7 +230,7 @@ private struct EmbeddedFilesSurface: View {
                     Button(action: onRefresh) {
                         Label(isScanning ? "Scanning" : "Rescan", systemImage: isScanning ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
                     }
-                    .buttonStyle(VaultFluidButtonStyle())
+                    .buttonStyle(.glass)
                     .disabled(isScanning)
                 }
 
@@ -360,12 +359,12 @@ private struct EmbeddedFileRow: View {
                             Button(action: onPreview) {
                                 Label("Preview", systemImage: "eye")
                             }
-                            .buttonStyle(VaultFluidButtonStyle())
+                            .buttonStyle(.glass)
 
                             Button(action: onExport) {
                                 Label("Export", systemImage: "square.and.arrow.up")
                             }
-                            .buttonStyle(VaultFluidButtonStyle(prominent: true))
+                            .buttonStyle(.glassProminent)
                         }
                     }
                 }
